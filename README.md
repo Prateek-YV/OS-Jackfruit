@@ -8,8 +8,8 @@ A lightweight Linux container runtime in C with a long-running supervisor and a 
 
 | Name | SRN |
 |------|-----|
-| \YELLAPANTULA VENKATA PRANAV\| \PES2UG24CS616\ |
-| \YELLAPANTULA VENKATA PRATEEK\ | \PES2UG24CS617\ |
+| \<YELLAPANTULA VENKATA PRATEEK\> | \<PES2UG24CS617\> |
+| \<YELLAPANTULA VENKATA PRANAV\> | \<PES2UG24CS616\> |
 
 ---
 
@@ -159,7 +159,6 @@ make clean
 ```
 
 ---
-
 
 ## 4. Engineering Analysis
 
