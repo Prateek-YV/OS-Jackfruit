@@ -1,41 +1,45 @@
-obj-m += monitor.o
+CC = gcc
+CFLAGS = -Wall -Wextra -O2
+LDFLAGS = -lcrypto
 
-KDIR := /lib/modules/$(shell uname -r)/build
-PWD := $(shell pwd)
-# If you want host-built workload binaries to run directly inside an Alpine
-# rootfs, you can override this with WORKLOAD_LDFLAGS=-static when your
-# toolchain supports it.
-WORKLOAD_LDFLAGS ?= -static
+# ─── Main binary ─────────────────────────────────────────────────────────────
 
-USER_TARGETS := engine memory_hog cpu_hog io_pulse
+SRCS = object.c tree.c index.c commit.c pes.c
+OBJS = $(SRCS:.c=.o)
 
-all: $(USER_TARGETS) module
+pes: $(OBJS)
+	$(CC) -o $@ $^ $(LDFLAGS)
 
-ci: WORKLOAD_LDFLAGS =
-ci: $(USER_TARGETS)
+%.o: %.c pes.h
+	$(CC) $(CFLAGS) -c $< -o $@
 
-module: monitor.ko
+# ─── Test binaries ───────────────────────────────────────────────────────────
 
-engine: engine.c monitor_ioctl.h
-	gcc -O2 -Wall -Wextra -o engine engine.c -lpthread
+test_objects: test_objects.o object.o
+	$(CC) -o $@ $^ $(LDFLAGS)
 
-memory_hog: memory_hog.c
-	gcc -O2 -Wall $(WORKLOAD_LDFLAGS) -o memory_hog memory_hog.c
+test_tree: test_tree.o object.o tree.o index.o
+	$(CC) -o $@ $^ $(LDFLAGS)
 
-cpu_hog: cpu_hog.c
-	gcc -O2 -Wall $(WORKLOAD_LDFLAGS) -o cpu_hog cpu_hog.c
+# ─── Convenience targets ────────────────────────────────────────────────────
 
-io_pulse: io_pulse.c
-	gcc -O2 -Wall $(WORKLOAD_LDFLAGS) -o io_pulse io_pulse.c
+.PHONY: all clean test test-unit test-integration
 
-monitor.ko: monitor.c monitor_ioctl.h
-	$(MAKE) -C $(KDIR) M=$(PWD) modules
+all: pes test_objects test_tree
 
 clean:
-	if [ -d "$(KDIR)" ]; then $(MAKE) -C $(KDIR) M=$(PWD) clean; fi
-	rm -f $(USER_TARGETS) *.o *.mod *.mod.c *.symvers *.order
-	rm -f *.log
-	rm -rf logs
-	rm -f /tmp/mini_runtime.sock
+	rm -f pes test_objects test_tree $(OBJS) test_objects.o test_tree.o
+	rm -rf .pes
 
-.PHONY: all ci module clean
+test: test-unit test-integration
+
+test-unit: test_objects test_tree
+	@echo "=== Running Phase 1 tests ==="
+	./test_objects
+	@echo ""
+	@echo "=== Running Phase 2 tests ==="
+	./test_tree
+
+test-integration: pes
+	@echo "=== Running integration tests ==="
+	bash test_sequence.sh
