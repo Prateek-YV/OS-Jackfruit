@@ -1,45 +1,46 @@
-CC = gcc
-CFLAGS = -Wall -Wextra -O2
-LDFLAGS = -lcrypto
+# Makefile for Multi-Container Runtime
+# Builds: engine (user-space), monitor.ko (kernel module), workloads
 
-# ─── Main binary ─────────────────────────────────────────────────────────────
+KDIR     := /lib/modules/$(shell uname -r)/build
+CC       := gcc
+CFLAGS   := -Wall -Wextra -O2 -pthread
 
-SRCS = object.c tree.c index.c commit.c pes.c
-OBJS = $(SRCS:.c=.o)
+# User-space targets
+USERSPACE_BINS := engine cpu_hog memory_hog io_pulse
 
-pes: $(OBJS)
-	$(CC) -o $@ $^ $(LDFLAGS)
+.PHONY: all clean ci module userspace
 
-%.o: %.c pes.h
-	$(CC) $(CFLAGS) -c $< -o $@
+all: userspace module
 
-# ─── Test binaries ───────────────────────────────────────────────────────────
+# ---- User-space ----
+userspace: $(USERSPACE_BINS)
 
-test_objects: test_objects.o object.o
-	$(CC) -o $@ $^ $(LDFLAGS)
+engine: engine.c monitor_ioctl.h
+	$(CC) $(CFLAGS) -o $@ $<
 
-test_tree: test_tree.o object.o tree.o index.o
-	$(CC) -o $@ $^ $(LDFLAGS)
+cpu_hog: cpu_hog.c
+	$(CC) $(CFLAGS) -o $@ $<
 
-# ─── Convenience targets ────────────────────────────────────────────────────
+memory_hog: memory_hog.c
+	$(CC) $(CFLAGS) -o $@ $<
 
-.PHONY: all clean test test-unit test-integration
+io_pulse: io_pulse.c
+	$(CC) $(CFLAGS) -o $@ $<
 
-all: pes test_objects test_tree
+# ---- Kernel module ----
+module:
+	$(MAKE) -C $(KDIR) M=$(PWD) modules
 
+# Kbuild picks this up
+obj-m += monitor.o
+
+# ---- CI target (no kernel headers, no sudo required) ----
+ci: engine cpu_hog memory_hog io_pulse
+	@echo "CI build OK"
+	@./engine 2>&1 | grep -q "Usage:" && echo "engine usage check OK" || (echo "engine usage check FAILED" && exit 1)
+
+# ---- Clean ----
 clean:
-	rm -f pes test_objects test_tree $(OBJS) test_objects.o test_tree.o
-	rm -rf .pes
-
-test: test-unit test-integration
-
-test-unit: test_objects test_tree
-	@echo "=== Running Phase 1 tests ==="
-	./test_objects
-	@echo ""
-	@echo "=== Running Phase 2 tests ==="
-	./test_tree
-
-test-integration: pes
-	@echo "=== Running integration tests ==="
-	bash test_sequence.sh
+	rm -f $(USERSPACE_BINS)
+	$(MAKE) -C $(KDIR) M=$(PWD) clean 2>/dev/null || true
+	rm -f *.o *.ko *.mod *.mod.c *.symvers *.order
