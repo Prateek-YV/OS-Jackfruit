@@ -8,8 +8,8 @@ A lightweight Linux container runtime in C with a long-running supervisor and a 
 
 | Name | SRN |
 |------|-----|
-| \<Name1\> | \<SRN1\> |
-| \<Name2\> | \<SRN2\> |
+| \<YELLAPANTULA VENKATA PRANAV\>| \<PES2UG24CS616\> |
+| \<YELLAPANTULA VENKATA PRATEEK\> | \<PES2UG24CS617\> |
 
 ---
 
