@@ -1,64 +1,44 @@
-/*
- * memory_hog.c - Memory pressure workload for soft / hard limit testing.
- *
- * Default behavior:
- *   - allocate 8 MiB every second
- *   - touch each page so RSS actually grows
- *
- * Usage:
- *   /memory_hog [chunk_mb] [sleep_ms]
- *
- * If you plan to copy this binary into an Alpine rootfs, build it in a way
- * that is runnable inside that filesystem, such as static linking or
- * rebuilding it from inside the rootfs/toolchain you choose.
- */
-
+/* memory_hog.c - allocates memory in steps to trigger soft/hard limits */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
-static size_t parse_size_mb(const char *arg, size_t fallback)
-{
-    char *end = NULL;
-    unsigned long value = strtoul(arg, &end, 10);
+#define STEP_MIB   8
+#define STEP_SLEEP 2
 
-    if (!arg || *arg == '\0' || (end && *end != '\0') || value == 0)
-        return fallback;
-    return (size_t)value;
-}
+int main(int argc, char *argv[]) {
+    int max_mib = 80;
+    if (argc > 1) max_mib = atoi(argv[1]);
 
-static useconds_t parse_sleep_ms(const char *arg, useconds_t fallback)
-{
-    char *end = NULL;
-    unsigned long value = strtoul(arg, &end, 10);
+    printf("memory_hog: will allocate up to %d MiB in %d MiB steps\n",
+           max_mib, STEP_MIB);
+    fflush(stdout);
 
-    if (!arg || *arg == '\0' || (end && *end != '\0'))
-        return fallback;
-    return (useconds_t)(value * 1000U);
-}
+    char *blocks[256];
+    int   nblocks = 0;
+    int   allocated = 0;
 
-int main(int argc, char *argv[])
-{
-    const size_t chunk_mb = (argc > 1) ? parse_size_mb(argv[1], 8) : 8;
-    const useconds_t sleep_us = (argc > 2) ? parse_sleep_ms(argv[2], 1000U) : 1000U * 1000U;
-    const size_t chunk_bytes = chunk_mb * 1024U * 1024U;
-    int count = 0;
+    while (allocated < max_mib && nblocks < 256) {
+        size_t sz = STEP_MIB * 1024 * 1024;
+        char *p = malloc(sz);
+        if (!p) { printf("memory_hog: malloc failed at %d MiB\n", allocated); break; }
 
-    while (1) {
-        char *mem = malloc(chunk_bytes);
-        if (!mem) {
-            printf("malloc failed after %d allocations\n", count);
-            break;
-        }
+        /* Touch every page so it's actually resident */
+        memset(p, 0xAB, sz);
+        blocks[nblocks++] = p;
+        allocated += STEP_MIB;
 
-        memset(mem, 'A', chunk_bytes);
-        count++;
-        printf("allocation=%d chunk=%zuMB total=%zuMB\n",
-               count, chunk_mb, (size_t)count * chunk_mb);
+        printf("memory_hog: allocated %d MiB so far\n", allocated);
         fflush(stdout);
-        usleep(sleep_us);
+        sleep(STEP_SLEEP);
     }
 
+    printf("memory_hog: holding %d MiB, sleeping...\n", allocated);
+    fflush(stdout);
+    sleep(60);
+
+    /* Free (may not be reached if killed by monitor) */
+    for (int i = 0; i < nblocks; i++) free(blocks[i]);
     return 0;
 }
